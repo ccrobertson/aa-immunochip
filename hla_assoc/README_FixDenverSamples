@@ -1,0 +1,20 @@
+### 2018-07-31 Re-running HLA association analyses for AAIC manuscript because it was discovered that 20 of the cases from Denver were not T1D
+
+#Create new directory for re-run analysis
+mkdir /data1/ccr5ju/AA_Immuno/FixDenverSamples
+cd /data1/ccr5ju/AA_Immuno/FixDenverSamples
+cp /m/jdrfdn_scratch/users/so4g/IMCHIP/20160316_African_American_IMCHIP/imputation/data/remove_t2d_bdc.txt .
+
+
+#Run association analysis for HLA alleles
+Rscript /data1/ccr5ju/AA_Immuno/scripts/hla_assoc/allelic_assoc_FixDenverSamples.R
+
+
+#Run association analysis for HLA haplotypes
+Rscript /data1/ccr5ju/AA_Immuno/scripts/hla_assoc/haplotype_assoc_FixDenverSamples.R
+
+
+#Copy tables to local drive (run locally)
+cd /Users/Cassie/Box\ Sync/Rich\ Lab/AA_Immunochip/FixDenverSamples
+scp ccr5ju@dobby.cphg.virginia.edu:/data1/ccr5ju/AA_Immuno/FixDenverSamples/*.doc .
+

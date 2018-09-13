@@ -1,0 +1,303 @@
+#Beagle documentation: http://faculty.washington.edu/browning/beagle/beagle_3.3.2_31Oct11.pdf
+
+##NOTE: 
+T1DGC data (familrs.???) was annotated using GRCh36/hg18
+AA_icaa data was annotated using GRCh37/hg19
+
+########################################################################################################################################################
+############################ SET UP ####################################################################################################################
+########################################################################################################################################################
+##### SET UP SNP2HLA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Download SNP2HLA from website http://software.broadinstitute.org/mpg/snp2hla/
+Copy to server: /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation
+Unpack: tar zxvf SNP2HLA_package_v1.0.3.tar.gz
+
+Download Beagle V3.0.4 from website https://faculty.washington.edu/browning/beagle/b3.html#oldVersions
+Copy to server: /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation
+Unpack: unzip beagle_3.0.4_05May09.zip 
+Copy beagle.tar and utility/linkage2beagle.jar to SNP2HLA_package_v1.0.3/SNP2HLA/
+
+Download beagle2linkage.jar
+Copy to server: /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+
+Run example: ./SNP2HLA.csh 1958BC HM_CEU_REF 1958BC_IMPUTED plink 2000 1000
+
+Look at output: 
+head 1958BC_IMPUTED.*
+grep HLA 1958BC_IMPUTED.bgl.gprobs
+
+
+##### SET UP MAKEREFERENCE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Copy .jar files to MakeReference/ directory (same files as copied to SNP2HLA directory)
+
+Set permissions on files: chmod u+x g+x *
+
+Run example:./MakeReference.csh HAPMAP_CEU HAPMAP_CEU_HLA.ped HM_CEU_REF plink
+
+Look at output: 
+head HM_CEU_REF.*
+grep HLA HM_CEU_REF.bim
+
+
+########################################################################################################################################################
+################### MAKE REFERENCE PANEL ###############################################################################################################
+########################################################################################################################################################
+### Get T1DGC HLA Alleles
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
+awk -F "," -v OFS="\t" '{print $6, $7, $8, $9, $10, $11, $20, $21, $22, $23, $24, $25, $32, $33, $34, $35, $28, $29, $30, $31, $26, $27 }' ../T1DGC.2011.03_Phenotypic_Current/Analyses\ Files/T1DGC.2011.03_Phenotypic_Current_HLA.csv | sed 's/"//g' > T1DGC_HLA_alleles.txt 
+awk -F "," -v OFS="\t" 'NR>1 {print $6, $7, $8, $9, $10, $11, $20, $21, $22, $23, $24, $25, $32, $33, $34, $35, $28, $29, $30, $31, $26, $27 }' ../T1DGC.2011.03_Phenotypic_Current/Analyses\ Files/T1DGC.2011.03_Phenotypic_Current_HLA.csv | sed 's/"//g' > T1DGC_HLA_alleles.ped
+
+#Update t1dgc famids in HLA alleles phenofile
+awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {$1=a[$2]; print $0} NR!=FNR && !($2 in a) {print}' mkreference/familyrs.fam mkreference/T1DGC_HLA_alleles.ped > mkreference/T1DGC_HLA_alleles_updated+t1dgc+famids.ped 
+
+
+### Get MHC genotypes for HLA-typed unrelated T1DGC subjects
+awk '($3==0 && $4==0) {print $1, $2}' familyrs.fam > t1dgc_unrelateds.txt
+awk 'NR==FNR {var=$1":"$2; a[var]=1; next} NR!=FNR && $1":"$2 in a {print $1, $2}' t1dgc_unrelateds.txt T1DGC_HLA_alleles_updated+t1dgc+famids.ped > t1dgc_unrelateds_immchip.txt #get intersection of unrelated subjects with immunochip data and hla types
+plink --bfile familyrs --chr 6 --from-kb 28500 --to-kb 34500 --keep t1dgc_unrelateds_immchip.txt --make-bed --out t1dgc_unrelateds_immchip --noweb
+
+
+### Test Panel 1 (1000 snps + 100 subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#create test TestPanel1 data set
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
+awk 'NR<1001 {print $2}' t1dgc_unrelateds_immchip.bim > extractTestPanel1.txt
+awk 'NR<101 {print $1, $2}' t1dgc_unrelateds_immchip.fam | sort > keepTestPanel1.txt
+plink --bfile t1dgc_unrelateds_immchip --extract extractTestPanel1.txt --keep keepTestPanel1.txt --make-bed --out t1dgc_unrelateds_immchip_TestPanel1 --noweb
+
+#extract hla alleles from TestPanel1 subjects with immchip data  (FNR = record number in current file; NR = total record number)
+awk 'NR==FNR {var=$1":"$2; a[var]=$0; next} NR!=FNR && $1":"$2 in a {print a[$1":"$2]}' T1DGC_HLA_alleles_updated+t1dgc+famids.ped keepTestPanel1.txt > T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip_TestPanel1.ped
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/MakeReference/
+#USAGE: ./MakeReference.csh SNPS HLAfile OUTPUT plink
+./MakeReference_modified.csh ../../mkreference/t1dgc_unrelateds_immchip_TestPanel1 ../../mkreference/T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip_TestPanel1.ped ../../mkreference/T1DGC_REF_TestPanel1 plink >& ../../mkreference/mkreference_TestPanel1.log 
+
+
+### Test Panel 2 (all snps + 100 subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#create test run data set
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
+awk '$2!~/1kg_/ && $2!=rs3130352 {print $2}' t1dgc_unrelateds_immchip.bim > extractNodups.txt  #drop problematic snps
+awk 'NR<101 {print $1, $2}' t1dgc_unrelateds_immchip.fam | sort > keepTestPanel2.txt
+plink --bfile t1dgc_unrelateds_immchip --keep keepTestPanel2.txt --extract extractNodups.txt --make-bed --out t1dgc_unrelateds_immchip_TestPanel2 --noweb
+
+#extract hla alleles from TestPanel subjects with immchip data  (FNR = record number in current file; NR = total record number)
+awk 'NR==FNR {var=$1":"$2; a[var]=$0; next} NR!=FNR && $1":"$2 in a {print a[$1":"$2]}' T1DGC_HLA_alleles_updated+t1dgc+famids.ped keepTestPanel2.txt > T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip_TestPanel2.ped
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/MakeReference/
+#USAGE: ./MakeReference.csh SNPS HLAfile OUTPUT plink
+./MakeReference_modified.csh ../../mkreference/t1dgc_unrelateds_immchip_TestPanel2 ../../mkreference/T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip_TestPanel2.ped ../../mkreference/T1DGC_REF_TestPanel2 plink >& ../../mkreference/mkreference_TestPanel2.log 
+
+
+### Full Panel (all snps + all subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
+awk '$2!~/1kg_/ && $2!=rs3130352 {print $2}' t1dgc_unrelateds_immchip.bim > extractNodups.txt  #drop problematic snps
+
+#extract hla alleles from subjects with immchip data  (FNR = record number in current file; NR = total record number)
+awk 'NR==FNR {var=$1":"$2; a[var]=$0; next} NR!=FNR && $1":"$2 in a {print a[$1":"$2]}' T1DGC_HLA_alleles_updated+t1dgc+famids.ped t1dgc_unrelateds_immchip.txt > T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip.ped
+plink --bfile t1dgc_unrelateds_immchip --extract extractNodups.txt --make-bed --out t1dgc_unrelateds_immchip_nodups --noweb
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/MakeReference/
+#USAGE: ./MakeReference.csh SNPS HLAfile OUTPUT plink
+./MakeReference_modified.csh ../../mkreference/t1dgc_unrelateds_immchip_nodups ../../mkreference/T1DGC_HLA_alleles_updated+t1dgc+famids_unrelateds_immchip.ped ../../mkreference/T1DGC_REF_nodups plink >& ../../mkreference/mkreference_noduplicates.log 
+
+
+########################################################################################################################################################
+############################ RUN IMPUTATION ############################################################################################################
+########################################################################################################################################################
+#Update t1dgc famids in AA_icaa data
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation
+awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {print a[$2], $2, $3, $4, $5, $6} NR!=FNR && !($2 in a) {print}' mkreference/familyrs.fam ../AA_icaa_hg19_noIBD.fam > run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam
+cp ../AA_icaa_hg19_noIBD.bed run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.bed
+cp ../AA_icaa_hg19_noIBD.bim run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.bim
+cp ../AA_icaa_hg19_noIBD.hh run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.hh
+cp ../AA_icaa_hg19_noIBD.log run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.log
+
+
+### Test Run 1 (TestPanel1 + 15 AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#create test run data set
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_TestPanel1.bgl.phased > refpanel_snps_TestRun1.txt  #extract reference panel snps
+awk 'NR<16 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun.txt 
+plink2 --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun.txt --extract refpanel_snps_TestRun1.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun1 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA (.bed/.bim/.fam) REFERENCE (.bgl.phased/.markers) OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun1 ../../mkreference/T1DGC_REF_TestPanel1 ../../run_imputation/AA_IMPUTED_TestRun1 plink 50000 1000 >& ../../run_imputation/run_imputation_TestRun1.log
+
+
+### Test Run 2 (TestPanel2 + 15 AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#create test run data set
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_TestPanel2.bgl.phased > refpanel_snps_TestRun2.txt  #extract reference panel snps
+awk 'NR<16 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun.txt  
+plink2 --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun.txt --extract refpanel_snps_TestRun2.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun2 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA (.bed/.bim/.fam) REFERENCE (.bgl.phased/.markers) OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+#./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun2 ../../mkreference/T1DGC_REF_TestPanel2 ../../run_imputation/AA_IMPUTED_TestRun2 plink 50000 1000 >& ../../run_imputation/run_imputation_TestRun2.log
+./SNP2HLA_modified_divide+sample.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun2 ../../mkreference/T1DGC_REF_TestPanel2 ../../run_imputation/AA_IMPUTED_TestRun2 plink 50000 1000 5 >& ../../run_imputation/run_imputation_TestRun2.log
+
+### Test Run 3 (Full Panel + 1 AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_nodups.bgl.phased > refpanel_snps_TestRun3.txt  #extract reference panel snps
+awk 'NR<2 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun.txt 
+plink --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun.txt --extract refpanel_snps_TestRun3.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun3 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA REFERENCE OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun3 ../../mkreference/T1DGC_REF_nodups ../../run_imputation/AA_IMPUTED_TestRun3 plink 50000 1000 >& ../../run_imputation/run_imputation_TestRun3.log
+top -b -u ccr5ju | grep --line-buffered java > run_imputation_TestRun3.mem.log
+
+
+### Test Run 4 (Full Panel + 200 AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_nodups.bgl.phased > refpanel_snps_TestRun4.txt  #extract reference panel snps
+awk 'NR<=200 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun200.txt 
+plink --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun200.txt --extract refpanel_snps_TestRun4.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun4 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA REFERENCE OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun4 ../../mkreference/T1DGC_REF_nodups ../../run_imputation/AA_IMPUTED_TestRun4 plink 100000 1000 >& ../../run_imputation/run_imputation_TestRun4.log
+top -b -u ccr5ju | grep --line-buffered java > run_imputation_TestRun4.mem.log
+
+
+### Test Run 5 (Full Panel + 500 AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_nodups.bgl.phased > refpanel_snps_TestRun5.txt  #extract reference panel snps
+awk 'NR<=500 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun500.txt 
+plink2 --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun500.txt --extract refpanel_snps_TestRun5.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun5 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA REFERENCE OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun5 ../../mkreference/T1DGC_REF_nodups ../../run_imputation/AA_IMPUTED_TestRun5 plink 100000 1000 >& ../../run_imputation/run_imputation_TestRun5.log
+#top -b -u ccr5ju | grep --line-buffered java > run_imputation_TestRun5.mem.log
+
+
+### Test Run 6 (Full Panel + all AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_nodups.bgl.phased > refpanel_snps_TestRun6.txt  #extract reference panel snps
+awk 'NR<=50 {print $1, $2}' AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam > keepTestRun600.txt 
+plink2 --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun600.txt --extract refpanel_snps_TestRun6.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun6 --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA REFERENCE OUTPUT plink {optional: java_max_memory[mb] marker_window_size subset_size}
+./SNP2HLA_modified_divide+sample.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_TestRun6 ../../mkreference/T1DGC_REF_nodups ../../run_imputation/AA_IMPUTED_TestRun6 plink 100000 1000 >& ../../run_imputation/run_imputation_TestRun6.log
+#top -b -u ccr5ju | grep --line-buffered java > run_imputation_TestRun6.mem.log
+
+
+
+
+########################################################################################################################################################
+############################ EXPLORE DATA ##############################################################################################################
+########################################################################################################################################################
+### Get race codes
+awk -F "," '{print $5, $6, $18, $20}' /m/jdrfdn_scratch/users/projects/IMCHIP/T1DGC.2011.03_Golden_Pedigree/T1DGC.2011.03_Golden_Pedigree/Resources/T1DGC.2011.03_Resources.csv > T1DGC+resources_ID+RaceCode.txt
+#Update t1dgc famids in race code data
+awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {$1=a[$2]; print $0} NR!=FNR && !($2 in a) {print}' mkreference/familyrs.fam T1DGC+resources_ID+RaceCode.txt > T1DGC+resources_ID+RaceCode_updated+t1dgc+famids.txt
+
+### Race distribution in reference panel
+awk 'NR==FNR {a[$1"\t"$2]=1; next} NR!=FNR && ($1"\t"$2 in a) {print $0}' mkreference/t1dgc_refpanel.fam T1DGC+resources_ID+RaceCode_updated+t1dgc+famids.txt > t1dgc_refpanel_RaceCodes.txt
+#R code:
+df = read.table("t1dgc_refpanel_RaceCodes.txt")
+table(df$V3)
+#1=American Indian/ Alaskan Native 
+#2=Asian 
+#3=Native Hawaiian or Other Pacific Islander 
+#4=Black or African American 
+#5=White or Caucasian 
+#6=Unknown
+
+### Overlap between reference panel and AA_icaa families
+#How many people in refpanel are related to someone in AA_icaa? 235  (125 families) 
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && ($1 in a) {print $1"\t"$2}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt | wc -l
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && ($1 in a) {print $1"\t"$2}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt| awk '{print $1}' | sort | uniq | wc -l
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && ($1 in a) {print $0}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt | awk '$3==4'
+
+#How many people in refpanel are NOT related to anyone in AA_icaa? 4961 (2802 families)
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && !($1 in a) {print $0}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt 
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && !($1 in a) {print $0}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt | awk '{print $1}' | sort | uniq | wc -l
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && !($1 in a) {print $0}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt | awk '$3==4' 
+
+awk 'NR==FNR {a[$1]=$1"\t"$2; next} NR!=FNR && ($1 in a) {print $1"\t"$2}' run_imputation/AA_icaa.subjects.txt t1dgc_refpanel_RaceCodes.txt| awk '{print $1}' | sort | uniq > AA_icaa_refpanel_family_overlap.txt
+perl -MList::Util -e 'print List::Util::shuffle <>' AA_icaa_refpanel_family_overlap.txt | head -n 50 > validation_set.txt
+
+
+
+
+
+########################################################################################################################################################
+############################ SCRATCH ###################################################################################################################
+########################################################################################################################################################
+
+#### TROUBLESHOOTING MakeReference.csh ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+###CONVERT (LINKAGE TO BEAGLE FORMAT)
+#last line of beagle format file is truncated (run command: awk 'NF<10362 {print NR":"NF}' T1DGC_REF.bgl)
+#linkage2beagle is running out of memory, not finishing the conversion, and thus producing a truncated file
+#version 3.0.4 which can be downloaded here (can download entire package at bottom of page) https://faculty.washington.edu/browning/beagle/b3.html#utility
+java -Xmx2000m -jar linkage2beagle_v304.jar pedigree=../../mkreference/T1DGC_REF.nopheno.ped data=../../mkreference/T1DGC_REF.dat beagle=../../mkreference/T1DGC_REF.bgl standard=true
+
+#version 4.1 which can be downloaded here https://faculty.washington.edu/browning/beagle_utilities/utilities.html
+#note -Xmx2000m option specifies memory, 500m was too small, so job was truncated
+#java -Xmx500m -jar linkage2beagle.jar ../../mkreference/T1DGC_REF.dat ../../mkreference/T1DGC_REF.nopheno.ped  > ../../mkreference/T1DGC_REF.bgl  #this fails 
+#java -Xmx2000m -jar linkage2beagle_v41.jar ../../mkreference/T1DGC_REF.dat ../../mkreference/T1DGC_REF.nopheno.ped  > ../../mkreference/T1DGC_REF.bgl #this works 
+
+###PHASE
+#must set tmp directory using -Djava.io.tmpdir=, default is "/tmp/" which does not have any space on it
+#also can alter max memory usage using -Xmx option
+
+#beagle version 3.0.4
+#java version 6
+#java -Xmx10000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF.bgl lowmem=true nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_jv6.log
+#### THIS ONE WORKED! #### 
+java -Xmx10000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF.bgl lowmem=true nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_jv6_lowmem.log
+#java -Xmx10000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF_truncated.bgl nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_jv6_truncated.log
+#java -Xmx10000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF_truncated.bgl lowmem=true nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_jv6_lowmem_truncated.log
+
+#java version 8
+#/usr/lib/jvm/jre-1.8.0/bin/java -Xmx2000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF.bgl lowmem=true nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase5.log
+#/usr/lib/jvm/jre-1.8.0/bin/java -Xmx2000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.jar unphased=../../mkreference/T1DGC_REF_truncated.bgl lowmem=true nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_truncated.log
+
+#beagle version 4.1
+#/usr/lib/jvm/jre-1.8.0/bin/java –Xss5m -Xmx2000m -Djava.io.tmpdir=/data1/ccr5ju -jar beagle.21Jan17.6cc.jar unphased=../../mkreference/T1DGC_REF.bgl nsamples=4 niterations=10 missing=0 verbose=true maxwindow=1000 log=../../mkreference/T1DGC_REF.phasing >& ../../mkreference/T1DGC_REF.bgl.phase_v4.log
+
+
+#### TROUBLESHOOTING SNP2HLA.csh ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Try removing problematic SNPs
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
+#awk '$2!="rs2523969" && $2!="rs9295825" {print}' T1DGC_REF.bgl.phased > T1DGC_REF_snpsremoved.bgl.phased
+#awk '$1!="rs2523969" && $1!="rs9295825" {print}' T1DGC_REF.markers > T1DGC_REF_snpsremoved.markers
+awk '$2!~/1kg_/ && $2!="rs3130352" {print}' T1DGC_REF.bgl.phased > T1DGC_REF_snpsremoved.bgl.phased
+awk '$1!~/1kg_/ && $1!="rs3130352" {print}' T1DGC_REF.markers > T1DGC_REF_snpsremoved.markers
+awk '$1!~/1kg_/ && $1!="rs3130352" {print}' T1DGC_REF.bim > T1DGC_REF_snpsremoved.bim
+
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_snpsremoved.bgl.phased > refpanel_snps_snpsremoved.txt  #extract reference panel snps 
+plink --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --keep keepTestRun.txt --extract refpanel_snps_snpsremoved.txt --out AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_snpsremoved --noweb --make-bed
+
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
+#USAGE: ./SNP2HLA.csh DATA REFERENCE OUTPUT plink {optional: java_max_memory[mb] marker_window_size}
+./SNP2HLA_modified.csh ../../run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids_refsnps_snpsremoved ../../mkreference/T1DGC_REF_snpsremoved ../../run_imputation/AA_IMPUTED_snpsremoved plink 50000 1000 >& ../../run_imputation/run_imputation_snpsremoved.log
+
+
+### Look at order of problematic snps
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
+grep -n 'rs2523969\|rs9295825\|rs3823382' AA_IMPUTED_TestRun3.MHC.QC.bgl
+grep -n 'rs2523969\|rs9295825\|rs3823382' ../mkreference/T1DGC_REF.markers
+
+awk 'NR>=542 && NR<=544 {print NR, $0}' AA_IMPUTED_TestRun3.MHC.QC.bgl
+awk 'NR>=1575 && NR<1577 {print NR, $0}' ../mkreference/T1DGC_REF.markers
+
+awk 'NR>=551 && NR<=553 {print NR, $0}' AA_IMPUTED_TestRun3.MHC.QC.bgl
+awk 'NR>=1606 && NR<=1608 {print NR, $0}' ../mkreference/T1DGC_REF.markers
+
+awk 'NR>=563 && NR<=565 {print NR, $0}' AA_IMPUTED_TestRun3.MHC.QC.bgl
+awk 'NR>=1640 && NR<=1642 {print NR, $0}' ../mkreference/T1DGC_REF.markers
+
+awk 'BEGIN {OFS="\t"} {if ($2 in a) {print $1,$2, $3, $4, a[$2]} else {a[$2]=$1"\t"$2"\t"$3"\t"$4}}' ../mkreference/T1DGC_REF.markers | grep 1kg | awk '$3!=$7 || $4!=$8'
+
+
+## CHECKING IF MARKERS AND BGL FILES MATCH UP IN REFERENE PANEL
+awk 'NR==FNR {a[NR]=$2; next} $1==a[NR+5] {print a[NR+5], $1}' T1DGC_REF.bgl.phased T1DGC_REF.markers
+awk 'NR==FNR {a[FNR]=$2; next} NR!=FNR && $1!=a[FNR+5] {print a[FNR+5], $1}' T1DGC_REF.bgl.phased T1DGC_REF.markers
+head /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference/T1DGC_REF_Testrun.markers
+head /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation/AA_IMPUTED_Testrun.MHC.QC.bgl | cut -d " " -f 1-10
