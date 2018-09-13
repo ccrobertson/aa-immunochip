@@ -1,0 +1,95 @@
+
+
+
+
+### Data locations ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#African American ImmunoChip data release
+/m/jdrfdn_scratch/users/projects/IMCHIP/20160316_African_American_IMCHIP/release/AA_icaa_hg19
+
+#Source of T1DGC samples
+/m/jdrfdn_scratch/users/projects/IMCHIP/T1DGC.2011.03_Golden_Pedigree/T1DGC.2011.03_Golden_Pedigree/Resources/T1DGC.2011.03_Resources.csv
+
+#Credible snp list
+/m/jdrfdn_scratch/users/projects/IMCHIP/ng.3245-S3_credibleSNPlist.xls
+
+#Significant results from European GWAS
+/m/jdrfdn_scratch/users/projects/IMCHIP/Table1_EUR.xlsx
+
+
+
+
+
+### PLINK ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Remove IBD subjects
+plink --bfile /m/jdrfdn_scratch/users/projects/IMCHIP/20160316_African_American_IMCHIP/release/AA_icaa_hg19 --remove /m/jdrfdn_scratch/users/projects/IMCHIP/20160316_African_American_IMCHIP/release/remove_ibd.txt --make-bed  --out AA_icaa_hg19_noIBD --noweb 
+
+#note: it looks like IBD subjects were already removed from the principal component files
+
+#Run association analysis adjusting for 2 principal components and gender
+#plink --bfile AA_icaa_hg19_noIBD --logistic --covar pc2.txt  --sex --out plink.logistic.2PC_chr21 --chr 21 --noweb --adjust
+
+plink --bfile AA_icaa_hg19_noIBD --logistic --covar pc2.txt  --sex --out plink.logistic.2PC --noweb --adjust
+
+plink --bfile AA_icaa_hg19_noIBD --logistic --covar pc4.txt  --sex --out plink.logistic.4PC --noweb
+
+#Get allele frequencies
+plink --bfile AA_icaa_hg19_noIBD --freq --noweb
+
+
+
+### KING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Calculate relatedness
+king -b AA_icaa_hg19_noIBD.bed --related --cpus 30 --degree 2
+
+
+### LOCUSZOOM ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#SUMMARY
+#generate files in EPACTS format (chr, start, end, markerID, pvalue)
+#use --epacts option
+#set region using --chr, --start, --end options
+#locuszoom will identify the top hit within the region using chr:pos
+#also can use --refsnp chr#:### with --flank 
+
+
+#CHROM 1
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --refsnp chr1:173392103 --flank 250kb --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+
+#CHROM 6
+#whole HLA region
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 6 --start 29500000 --end 33500000 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+#index snp: chr6:32626272 rs9273363
+
+#class I
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 6 --start 29500000 --end 31500000 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+
+#class III
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 6 --start 31500000 --end 32250000 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+
+#class II
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 6 --start 32250000 --end 33250000 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+
+
+#CHROM 11 
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 11 --start 1934848 --end 2434848 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+#index snp: chr11:2184848 imm_11_2141424
+
+
+#CHROM 17
+/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --epacts results_2PCs_epactsformat.txt --markercol MARKER_ID --pvalcol PVALUE --chr 17 --start 37816240 --end 38316240 --build hg19 --pop AFR --source 1000G_March2012 --plotonly
+#index snp: chr17:38066240 imm_17_35319766
+
+
+
+############# ATTEMPTS TO USE --metal FORMAT #################
+#works with refsnps with rsIDs
+#when snps don't have rsIDs it doesn't know how to look for chr:pos
+#might work with markerID is set to chr#:###
+#/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --metal results_2PCs_metalformat.txt --markercol SNP --pvalcol P --refsnp rs1739855 --flank 200kb --build hg19 --pop AFR --source 1000G_March2012
+#/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --metal results_2PCs_metalformat.txt --markercol SNP --pvalcol P --refsnp imm_11_2141424 --flank 500kb --build hg19 --pop AFR --source 1000G_March2012
+#sed -i '1s/^/#/' results_2PCs_tabixformat.txt #add a hashtag to beginning of file
+#bgzip results_2PCs_tabixformat.txt  #compress file
+#tabix -p vcf  results_2PCs_tabixformat.txt.gz  #index file
+#tabix -h results_2PCs_tabixformat.txt.gz 1:1118275-1186502   #now can extract data from specific regions with a header
+#tabix -h results_2PCs_tabixformat.txt.gz 1:1118275-2118275 > test_locuszoom.txt
+#/m/cphg-expr1/cphg-expr1/locuszoom/bin/locuszoom --metal test_locuszoom.txt --markercol SNP --pvalcol P --refsnp rs1739855 --flank 100kb --build hg19 --pop AFR --source 1000G_March2012
