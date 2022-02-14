@@ -1,48 +1,80 @@
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Extract phased beagle data
-awk --posix 'NR<=5 || $2~/^HLA_[^_]+_[0-9][0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.bgl.phased > derived_data/phased_2d.txt 
-awk --posix 'NR <=5 || $2~/^HLA_[^_]+_([0-9]{3})[0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.bgl.phased > derived_data/phased_4d.txt 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Extract imputation results for analysis in R
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cd /data1/ccr5ju/AA_Immuno/hla_imputation/imputation_results
 
-#Extract imputed dosages -- for performing conditional analysis in R
-cp ../hla_imputation/imputation_results/AA_IMPUTED.dosage derived_data/dosages_all_vars.txt  									#all variants
-awk --posix '$1~/^AA_|^INS_/' ../hla_imputation/imputation_results/AA_IMPUTED.dosage > derived_data/dosages_aa.txt 				#amino acids
-awk --posix '$1!~/^AA_|^INS_/' ../hla_imputation/imputation_results/AA_IMPUTED.dosage > derived_data/dosages_no_aa.txt 			#snps and classical alleles
-awk --posix '$1~/^HLA_[^_]+_[0-9][0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.dosage > derived_data/dosages.classical_2d_alleles.txt 			#2d classical
-awk --posix '$1~/^HLA_[^_]+_([0-9]{3})[0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.dosage > derived_data/dosages.classical_4d_alleles.txt		#4d classical
-
-#Convert to genotype format (can be read by R)
-cd derived_data
-plink2 -bfile ../../hla_imputation/imputation_results/AA_IMPUTED --recode A --out genotypes_recode
-
-#Extract genotypes
-echo -e "FID\nIID\nPAT\nMAT\nSEX\nPHENOTYPE" > allele_list.2d
-awk --posix '$2~/^HLA_[^_]+_[0-9][0-9]$/ {print $2"_P"}' ../../hla_imputation/imputation_results/AA_IMPUTED.bim >> allele_list.2d
-perl ~/utility_scripts/extractCols.pl --file genotypes_recode.raw --out genotypes_recode.raw.2d --cols allele_list.2d --cols-file
-
-echo -e "FID\nIID\nPAT\nMAT\nSEX\nPHENOTYPE" > allele_list.4d
-awk --posix '$2~/^HLA_[^_]+_[0-9]{3}[0-9]$/ {print $2"_P"}' ../../hla_imputation/imputation_results/AA_IMPUTED.bim >> allele_list.4d
-perl ~/utility_scripts/extractCols.pl --file genotypes_recode.raw --out genotypes_recode.raw.4d --cols allele_list.4d --cols-file
+impdat=/data1/ccr5ju/AA_Immuno/hla_assoc/processed_impdata
 
 
+### Extract dosages
+cp AA_IMPUTED.dosage ${impdat}/dosages_all.txt
+awk --posix '$1~/^AA_|^INS_/' AA_IMPUTED.dosage > ${impdat}/dosages.aa
+#awk --posix '$1!~/^AA_|^INS_/' AA_IMPUTED.dosage > ${impdat}/dosages.no_aa
+awk --posix '$1~/^HLA_[^_]+_[0-9][0-9]$/' AA_IMPUTED.dosage > ${impdat}/dosages.2d
+awk --posix '$1~/^HLA_[^_]+_([0-9]{3})[0-9]$/' AA_IMPUTED.dosage > ${impdat}/dosages.4d
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-### Association analysis of imputed HLA alleles
+
+### Extract phased classical alleles
+awk --posix 'NR<=5 || $2~/^HLA_[^_]+_[0-9][0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.bgl.phased > ${impdat}/phased_2d.txt
+awk --posix 'NR <=5 || $2~/^HLA_[^_]+_([0-9]{3})[0-9]$/' ../hla_imputation/imputation_results/AA_IMPUTED.bgl.phased > ${impdat}/phased_4d.txt
+
+
+### Convert best-guess genotype to matrix format (can be read by R)
+plink2 -bfile AA_IMPUTED --recode A --out ${impdat}/genotypes_recode
+
+
+### Extract genotypes
+echo -e "FID\nIID\nPAT\nMAT\nSEX\nPHENOTYPE" > ${impdat}/allele_list.2d
+awk --posix '$2~/^HLA_[^_]+_[0-9][0-9]$/ {print $2"_P"}' AA_IMPUTED.bim >> ${impdat}/allele_list.2d
+perl ~/utility_scripts/extractCols.pl --file ${impdat}/genotypes_recode.raw --out ${impdat}/genotypes_recode.raw.2d --cols ${impdat}/allele_list.2d --cols-file
+
+echo -e "FID\nIID\nPAT\nMAT\nSEX\nPHENOTYPE" > ${impdat}/allele_list.4d
+awk --posix '$2~/^HLA_[^_]+_[0-9]{3}[0-9]$/ {print $2"_P"}' AA_IMPUTED.bim >> ${impdat}/allele_list.4d
+perl ~/utility_scripts/extractCols.pl --file ${impdat}/genotypes_recode.raw --out ${impdat}/genotypes_recode.raw.4d --cols ${impdat}/allele_list.4d --cols-file
+
+
+
+### Verify that IIDs are in same order in bgl file as fam file
+#options(stringsAsFactor=FALSE)
+#bgl = read.table("AA_IMPUTED.bgl.phased", header=FALSE, comment.char="~")
+#fam = read.table("AA_IMPUTED.fam", header=FALSE, comment.char="~"); names(fam) <- c("FID","IID", "FAT", "MOT", "SEX","PHENO")
+#bgl_ids = as.character(unlist(bgl[2,]))
+#ncolstokeep = length(bgl_ids)
+#d = data.frame(bgl_IID = as.character(bgl_ids[3:ncolstokeep][seq(1,(ncolstokeep-2), by=2)]), fam_IID = as.character(fam$IID))
+#d$INDICATOR = d$bgl_IID == d$fam_IID
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#  Unadjusted association analysis -- naive first pass analysis in plink
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_assoc/
-plink2 -bfile ../hla_imputation/imputation_results/AA_IMPUTED --logistic 
+plink2 -bfile ../hla_imputation/imputation_results/AA_IMPUTED --logistic
 plink2 -dosage ../hla_imputation/imputation_results/AA_IMPUTED.dosage format=1 noheader case-control-freqs --fam ../hla_imputation/imputation_results/AA_IMPUTED.fam
-#plink2 -dosage ../hla_imputation/imputation_results/AA_IMPUTED.dosage format=1 noheader case-control-freqs --fam ../hla_imputation/imputation_results/AA_IMPUTED.fam --condition rs1339898 --out hla_assoc/conditional 
+#plink2 -dosage ../hla_imputation/imputation_results/AA_IMPUTED.dosage format=1 noheader case-control-freqs --fam ../hla_imputation/imputation_results/AA_IMPUTED.fam --condition rs1339898 --out hla_assoc/conditional
 #Error: --dosage does not support --condition/--condition-list.
 
 #Extract plink-based unadjusted results
 awk --posix 'NR==1 || $1~/^HLA_[^_]+_[0-9][0-9]$/' plink.assoc.dosage > hla_assoc_2_digit.txt
 awk --posix 'NR==1 || $1~/^HLA_[^_]+_([0-9]{3})[0-9]$/' plink.assoc.dosage > hla_assoc_4_digit.txt
-awk --posix 'NR==1 || $1~/^AA_|^INS_/' plink.assoc.dosage > hla_assoc_aa.txt  
-awk --posix 'NR==1 || ($1!~/^AA_/ && $2!~/^HLA_/)' plink.assoc.dosage  > hla_assoc_snps.txt 
+awk --posix 'NR==1 || $1~/^AA_|^INS_/' plink.assoc.dosage > hla_assoc_aa.txt
+awk --posix 'NR==1 || ($1!~/^AA_/ && $2!~/^HLA_/)' plink.assoc.dosage  > hla_assoc_snps.txt
 
 
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-### Association analysis for MANUSCRIPT
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#  Association analysis for Diabetes Care MANUSCRIPT (Note this was updated to remove Denver samples in 2018 -- see README_FixDenverSamples)
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 allelic_assoc.R
 haplotype_assoc.R
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Amino acid analysis for ASHG 2017 Poster
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+aa_assoc.R
+conditional_analysis.R

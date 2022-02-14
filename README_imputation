@@ -5,7 +5,7 @@
 #SNP2HLA documentation: http://software.broadinstitute.org/mpg/snp2hla/
 #Beagle 3.0.4 documentation: http://faculty.washington.edu/browning/beagle/beagle_3.3.2_31Oct11.pdf
 
-#NOTE: 
+#NOTE:
 #T1DGC data (familrs) was annotated using GRCh36/hg18
 #AA_icaa data was annotated using GRCh37/hg19
 #this should not matter as the program maps using rs IDs
@@ -14,7 +14,7 @@
 ################### MAKE REFERENCE PANEL ###############################################################################################################
 ########################################################################################################################################################
 ### Get rid of duplicate markers
-cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference  
+cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/mkreference
 #should we change this to also incorporate ref/alt?? are there indels on immunochip?
 ##awk '{if ($1":"$4 in a) {print a[$1":"$4], $2,"\t",$1,$4} else {a[$1":"$4]=$2}}' familyrs.bim | awk '{if ($1~/^rs/) {print $1, $2, $3, $4} else if ($2~/^rs/) {print $2, $1, $3, $4} else {print $0}}' | awk '{print $2}' > duplicate_snps.txt
 plink2 -bfile familyrs --exclude duplicate_snps.txt --make-bed --out familyrs_nodups
@@ -23,6 +23,31 @@ plink2 -bfile familyrs --exclude duplicate_snps.txt --make-bed --out familyrs_no
 awk -F "," -v OFS="\t" 'NR>1 {print $6, $7, $8, $9, $10, $11, $20, $21, $22, $23, $24, $25, $32, $33, $34, $35, $28, $29, $30, $31, $26, $27 }' ../../raw/T1DGC.2011.03_Phenotypic_Current/Analyses\ Files/T1DGC.2011.03_Phenotypic_Current_HLA.csv | sed 's/"//g' > T1DGC_HLA_alleles_tmp.ped
 #update t1dgc famids in HLA alleles phenofile
 awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {$1=a[$2]; print $0} NR!=FNR && !($2 in a) {print}' familyrs_nodups.fam T1DGC_HLA_alleles_tmp.ped > T1DGC_HLA_alleles.ped ;
+
+#NOTE the columns in “T1DGC_HLA_alleles_refpanel.ped" are the following (left-to-right):
+famid
+analytic_id
+dadid
+momid
+sex
+type1
+hla_a_1
+hla_a_2
+hla_b_1
+hla_b_2
+hla_c_1
+hla_c_2
+hla_dpa1_1
+hla_dpa1_2
+hla_dpb1_1
+hla_dpb1_2
+hla_dqa1_1
+hla_dqa1_2
+hla_dqb1_1
+hla_dqb1_2
+hla_drb1_1
+hla_drb1_2
+
 
 ### Get intersection of unrelated subjects with immunochip data and hla types (HLA-typed unrelated T1DGC subjects)
 awk '($3==0 && $4==0) {print $1, $2}' familyrs_nodups.fam > t1dgc_tmp.txt
@@ -45,13 +70,13 @@ top -b -u ccr5ju | grep --line-buffered java > mkreference.mem.log &
 
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/MakeReference/
 #USAGE: ./MakeReference.csh SNPS HLAfile OUTPUT plink
-./MakeReference_modified.csh ../../mkreference/t1dgc_refpanel ../../mkreference/T1DGC_HLA_alleles_refpanel.ped ../../mkreference/T1DGC_REF plink >& ../../mkreference/mkreference.log 
+./MakeReference_modified.csh ../../mkreference/t1dgc_refpanel ../../mkreference/T1DGC_HLA_alleles_refpanel.ped ../../mkreference/T1DGC_REF plink >& ../../mkreference/mkreference.log
 
 
 ########################################################################################################################################################
 ############################ RUN IMPUTATION ############################################################################################################
 ########################################################################################################################################################
-#Update famids in AA_icaa 
+#Update famids in AA_icaa
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation
 awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {print a[$2], $2, $3, $4, $5, $6} NR!=FNR && !($2 in a) {print}' mkreference/familyrs_nodups.fam ../AA_icaa_hg19_noIBD.fam > run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.fam
 cp ../AA_icaa_hg19_noIBD.bed run_imputation/AA_icaa_hg19_noIBD_updated+t1dgc+famids.bed
@@ -69,7 +94,7 @@ plink2 --bfile AA_icaa_hg19_noIBD_updated+t1dgc+famids --indiv-sort f AA_icaa.su
 
 ### Run imputation (full Panel + all AA subjects) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
-awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF.bgl.phased > refpanel_snps.txt  
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF.bgl.phased > refpanel_snps.txt
 plink2 --bfile AA_icaa.scramble --extract refpanel_snps.txt --out AA_icaa.scramble.refsnps --noweb --make-bed
 
 #check frequency of cases and controls in random subsets
@@ -106,12 +131,12 @@ plink2 --bfile t1dgc_refpanel --remove ../validation_subjects.txt --make-bed --o
 awk 'NR==FNR {a[$1":"$2]=1} NR!=FNR && !($1":"$2 in a) {print}' ../validation_subjects.txt T1DGC_HLA_alleles_refpanel.ped > T1DGC_HLA_alleles_refpanel_validation.ped
 
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/MakeReference/
-./MakeReference_modified.csh ../../mkreference/t1dgc_refpanel_validation ../../mkreference/T1DGC_HLA_alleles_refpanel_validation.ped ../../mkreference/T1DGC_REF_validation plink >& ../../mkreference/mkreference_validation.log 
- 
+./MakeReference_modified.csh ../../mkreference/t1dgc_refpanel_validation ../../mkreference/T1DGC_HLA_alleles_refpanel_validation.ped ../../mkreference/T1DGC_REF_validation plink >& ../../mkreference/mkreference_validation.log
+
 ### Run imputation
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/run_imputation
-awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_validation.bgl.phased > refpanel_snps_validation.txt  
-plink --bfile AA_icaa.scramble --extract refpanel_snps_validation.txt --noweb --make-bed --out AA_icaa.scramble.refsnps_validation 
+awk 'NR>5 {print $2}' ../mkreference/T1DGC_REF_validation.bgl.phased > refpanel_snps_validation.txt
+plink --bfile AA_icaa.scramble --extract refpanel_snps_validation.txt --noweb --make-bed --out AA_icaa.scramble.refsnps_validation
 
 cd /m/jdrfdn_scratch/users/ccr5ju/AA_Immuno/hla_imputation/SNP2HLA_package_v1.0.3/SNP2HLA/
 ./SNP2HLA_modified_divide+sample.csh ../../run_imputation/AA_icaa.scramble.refsnps_validation ../../mkreference/T1DGC_REF_validation ../../run_imputation/AA_IMPUTED_validation plink 150000 1000 500 >& ../../run_imputation/run_imputation_validation.log
@@ -127,7 +152,7 @@ plink2 --bfile run_imputation/AA_IMPUTED_validation --extract hla_alleles.txt --
 
 #get true HLA types
 awk -F "," -v OFS="\t" '{print $6, $7, $8, $9, $10, $11, $20, $21, $22, $23, $24, $25, $32, $33, $34, $35, $28, $29, $30, $31, $26, $27 }' T1DGC.2011.03_Phenotypic_Current/Analyses\ Files/T1DGC.2011.03_Phenotypic_Current_HLA.csv | sed 's/"//g' > T1DGC_HLA_alleles_tmp.txt
-awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {$1=a[$2]; print $0} NR!=FNR && !($2 in a) {print}' mkreference/familyrs_nodups.fam T1DGC_HLA_alleles_tmp.txt > T1DGC_HLA_alleles.txt ; rm -f T1DGC_HLA_alleles_tmp.txt 
+awk 'NR==FNR {a[$2]=$1} NR!=FNR && $2 in a {$1=a[$2]; print $0} NR!=FNR && !($2 in a) {print}' mkreference/familyrs_nodups.fam T1DGC_HLA_alleles_tmp.txt > T1DGC_HLA_alleles.txt ; rm -f T1DGC_HLA_alleles_tmp.txt
 awk 'NR==FNR {a[$1":"$2]=1} NR!=FNR && (FNR==1 || $1":"$2 in a) {print}' AA_icaa_validation_subjects.txt T1DGC_HLA_alleles.txt
 
 #calculate accuracy
@@ -136,5 +161,18 @@ perl calculate_concordance.pl
 
 
 
+########################################################################################################################################################
+############################ Looking at numbers of SNPs in imputation panel and used for imputation
+########################################################################################################################################################
+#hla_imputation/mkreference/t1dgc_refpanel.bim = input ichip data for making  reference panel (7281 snps)
+#T1DGC_REF.bgl.phased > hla_imputation/run_imputation/refpanel_snps.txt (9638 markers)
+#hla_imputation/run_imputation/AA_icaa.scramble.refsnps.bim = input ichip data for imputation (5299 snps)
 
+d1 = read.table("hla_imputation/mkreference/t1dgc_refpanel.bim")
+d2 = read.table("hla_imputation/run_imputation/refpanel_snps.txt")
+d3 = read.table("hla_imputation/run_imputation/AA_icaa.scramble.refsnps.bim")
+write.table(d1$V2[!d1$V2 %in% d2$V1], file="ichip_snps_dropped.txt", quote=FALSE, row.names=FALSE, col.names=FALSE)
+#plink --bfile hla_imputation/mkreference/t1dgc_refpanel --extract ichip_snps_dropped.txt --out t1dgc_refpanel_dropped --make-bed
+#plink --bfile t1dgc_refpanel_dropped --freq --out t1dgc_refpanel_dropped
 
+frq = read.table("t1dgc_refpanel_dropped.frq", header=TRUE)
